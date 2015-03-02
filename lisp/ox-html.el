@@ -55,6 +55,7 @@
 (org-export-define-backend 'html
   '((bold . org-html-bold)
     (center-block . org-html-center-block)
+    (citation . org-html-citation)
     (clock . org-html-clock)
     (code . org-html-code)
     (drawer . org-html-drawer)
@@ -2308,6 +2309,15 @@ CONTENTS holds the contents of the block.  INFO is a plist
 holding contextual information."
   (format "<div class=\"org-center\">\n%s</div>" contents))
 
+;;;; Citation
+
+(defun org-html-citation (citation contents info)
+  ;; TODO: there's probably some voodoo related to whether a span is
+  ;; allowed to contain a block element, in case this is a full
+  ;; citation.
+  (format "<span class=\"in-text-citation\">%s</span>"
+	  (org-cite-format-citation citation contents info)))
+
 ;;;; Clock
 
 (defun org-html-clock (clock _contents _info)
@@ -2654,7 +2664,10 @@ CONTENTS is nil.  INFO is a plist holding contextual information."
 		(localp (org-string-match-p "\\<local\\>" value)))
 	    (org-html-toc depth info (and localp keyword))))
 	 ((string= "listings" value) (org-html-list-of-listings info))
-	 ((string= "tables" value) (org-html-list-of-tables info))))))))
+	 ((string= "tables" value) (org-html-list-of-tables info)))))
+     ((string= key "BIBLIOGRAPHY")
+      (format "<div class=\"bibliography\">%s</div>"
+	      (org-cite-format-bibliography info))))))
 
 ;;;; Latex Environment
 

@@ -41,6 +41,7 @@
 (org-export-define-backend 'latex
   '((bold . org-latex-bold)
     (center-block . org-latex-center-block)
+    (citation . org-latex-citation)
     (clock . org-latex-clock)
     (code . org-latex-code)
     (drawer . org-latex-drawer)
@@ -1659,6 +1660,12 @@ holding contextual information."
    center-block (format "\\begin{center}\n%s\\end{center}" contents) info))
 
 
+;;;; Citation
+
+(defun org-latex-citation (citation contents info)
+  (org-cite-format-citation citation contents info))
+
+
 ;;;; Clock
 
 (defun org-latex-clock (clock _contents info)
@@ -2146,7 +2153,9 @@ CONTENTS is nil.  INFO is a plist holding contextual information."
 	  (case (plist-get info :latex-listings)
 	    ((nil) "\\listoffigures")
 	    (minted "\\listoflistings")
-	    (otherwise "\\lstlistoflistings")))))))))
+	    (otherwise "\\lstlistoflistings"))))))
+     ((string= key "BIBLIOGRAPHY")
+      (org-cite-format-bibliography info)))))
 
 
 ;;;; Latex Environment
