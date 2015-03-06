@@ -493,6 +493,10 @@ Some other text
 	 (org-element-type (org-element-context)))))
   (should
    (eq 'citation
+       (org-test-with-temp-text "@ö"
+	 (org-element-type (org-element-context)))))
+  (should
+   (eq 'citation
        (org-test-with-temp-text "@_"
 	 (org-element-type (org-element-context)))))
   (should
