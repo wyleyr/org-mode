@@ -2315,7 +2315,7 @@ holding contextual information."
   ;; allowed to contain a block element, in case this is a full
   ;; citation.
   (format "<span class=\"in-text-citation\">%s</span>"
-	  (org-export-cite-format-citation citation contents info)))
+	  (org-cite-format-citation citation contents info)))
 
 ;;;; Clock
 
@@ -2666,7 +2666,7 @@ CONTENTS is nil.  INFO is a plist holding contextual information."
 	 ((string= "tables" value) (org-html-list-of-tables info)))))
      ((string= key "BIBLIOGRAPHY")
       (format "<div class=\"bibliography\">%s</div>"
-	      (org-export-cite-format-bibliography info))))))
+	      (org-cite-format-bibliography info))))))
 
 ;;;; Latex Environment
 

@@ -2929,7 +2929,7 @@ Return code as a string."
   (org-export-barf-if-invalid-backend backend)
   (save-excursion
     (save-restriction
-      ;; Narrow buffer to an appropriate region or subtree for
+      ;; Narrow buffer to an appropriate region or subtree forq
       ;; parsing.  If parsing subtree, be sure to remove main headline
       ;; too.
       (cond ((org-region-active-p)
@@ -3031,7 +3031,7 @@ Return code as a string."
 	       (org-export-filter-apply-functions
 		(plist-get info :filter-parse-tree) tree info))
 	 ;; Add the bibliography database to the info
-	 (setq info (org-export-cite-prepare tree info))
+	 (setq info (org-cite-export-prepare tree info))
 	 ;; Now tree is complete, compute its properties and add them
 	 ;; to communication channel.
 	 (setq info (org-export--collect-tree-properties tree info))
