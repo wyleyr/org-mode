@@ -75,6 +75,7 @@
 (require 'org-element)
 (require 'org-macro)
 (require 'ob-exp)
+(require 'org-cite)
 
 (declare-function org-publish "ox-publish" (project &optional force async))
 (declare-function org-publish-all "ox-publish" (&optional force async))

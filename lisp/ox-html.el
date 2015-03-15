@@ -2315,8 +2315,7 @@ holding contextual information."
   ;; TODO: there's probably some voodoo related to whether a span is
   ;; allowed to contain a block element, in case this is a full
   ;; citation.
-  (format "<span class=\"in-text-citation\">%s</span>"
-	  (org-cite-format-citation citation contents info)))
+  (org-cite-format-citation citation contents info))
 
 ;;;; Clock
 
