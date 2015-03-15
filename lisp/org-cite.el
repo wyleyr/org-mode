@@ -5,13 +5,17 @@
 (require 'org-bibtex)
 (require 'cl-lib)
 (require 'subr-x)
-(require 'let-alist)
+;(require 'let-alist)
 ;;; TODO: would also be nice to have a let-plist, and let-org-element
 (require 'regexp-opt)
 (require 'format-spec)
 
 ;;; TODO: calling with args backend and info is redundant, since
 ;;; backend can be gotten from info
+
+;;; TODO: once it's clear how to get the citation-references inside a
+;;; citation, need to add support for multi-cites, and add
+;;; JSON-generating utilities here.
 
 
 ;;; Utilities
@@ -31,50 +35,86 @@
     plist))
 
 ;;; TODO: defcustom
-(defconst org-cite--citeproc-java-lib-path
-  (expand-file-name "../lib/"
-		    (file-name-directory
-		     (file-truename (executable-find "citeproc-java"))))
-  "The path to the citeproc-java installation.")
+;; (defconst org-cite--citeproc-java-lib-path
+;;   (expand-file-name "../lib/"
+;; 		    (file-name-directory
+;; 		     (file-truename (executable-find "citeproc-java"))))
+;;   "The path to the citeproc-java installation.")
+
+(defconst org-cite--org-citeproc-binary
+  (expand-file-name "../bin/org-citeproc"))
 
 (defconst org-cite--org-csl-dir
   (expand-file-name "../etc/csl/"
 		    (file-name-directory (or load-file-name (buffer-file-name)))))
 
-(defconst org-cite--citeproc-classpath
-  (concat (mapconcat (lambda (x) (concat org-cite--citeproc-java-lib-path x))
-		     '("citeproc-java-0.6.jar"
-		       "commons-lang-2.6.jar"
-		       "jbibtex-1.0.8.jar"
-		       "antlr4-runtime-4.1.jar"
-		       "rhino-1.7R4.jar"
-		       "mapdb-0.9.6.jar"
-		       "styles-1.0.1-SNAPSHOT.jar"
-		       "locales-1.0.1-SNAPSHOT.jar"
-		       "org.abego.treelayout.core-1.0.1.jar")
-		     ":")
-	  ":" org-cite--org-csl-dir))
+;; (defconst org-cite--citeproc-classpath
+;;   (concat (mapconcat (lambda (x) (concat org-cite--citeproc-java-lib-path x))
+;; 		     '("citeproc-java-0.6.jar"
+;; 		       "commons-lang-2.6.jar"
+;; 		       "jbibtex-1.0.8.jar"
+;; 		       "antlr4-runtime-4.1.jar"
+;; 		       "rhino-1.7R4.jar"
+;; 		       "mapdb-0.9.6.jar"
+;; 		       "styles-1.0.1-SNAPSHOT.jar"
+;; 		       "locales-1.0.1-SNAPSHOT.jar"
+;; 		       "org.abego.treelayout.core-1.0.1.jar")
+;; 		     ":")
+;; 	  ":" org-cite--org-csl-dir))
 
-(defun org-cite--run-citeproc-java (&rest args)
-  "Run the javadoc program, passing it ARGS.
+;; (defun org-cite--run-citeproc-java (&rest args)
+;;   "Run the javadoc program, passing it ARGS.
 
-Raises an error if the program exits with a non-zero status,
-otherwise returns stdout as a string.
+;; Raises an error if the program exits with a non-zero status,
+;; otherwise returns stdout as a string.
 
-We need to hack our own CSL file into the classpath, which is why
-we can't just use the wrapper script distributed by citeproc-java."
-  ;; TODO: does this work with windows paths?
-  (with-temp-buffer
-    (let ((result-code
-	   (apply #'call-process "java" nil '(t nil) nil
-		  "-classpath"
-		  org-cite--citeproc-classpath
-		  "de.undercouch.citeproc.CSLTool"
-		  args)))
-      (unless (zerop result-code)
-	(error "Non-zero exit from citeproc-java; args = %S"
-	       args))
-      (buffer-string))))
+;; We need to hack our own CSL file into the classpath, which is why
+;; we can't just use the wrapper script distributed by citeproc-java."
+;;   ;; TODO: does this work with windows paths?
+;;   (with-temp-buffer
+;;     (let ((result-code
+;; 	   (apply #'call-process "java" nil '(t nil) nil
+;; 		  "-classpath"
+;; 		  org-cite--citeproc-classpath
+;; 		  "de.undercouch.citeproc.CSLTool"
+;; 		  args)))
+;;       (unless (zerop result-code)
+;; 	(error "Non-zero exit from citeproc-java; args = %S"
+;; 	       args))
+;;       (buffer-string))))
+
+(defun org-cite--run-org-citeproc (json-buffer backend cslfile bibfiles)
+  "Run the org-citeproc program, passing it the following arguments:
+The contents of JSON-BUFFER will be passed as the program's stdin.
+BACKEND should be a symbol naming an export backend.
+CSLFILE should be a path to a CSL file.
+BIBFILES should be a list of paths to bibliography database files in a format
+that pandoc-citeproc can read.
+
+Returns a buffer containing the results of org-citeproc.
+"
+  (let* ((output-buffer (get-buffer-create "*Org-citeproc results*"))
+	 (output-format
+	  (cond
+	   ((org-export-derived-backend-p backend 'ascii) "ascii")
+	   ((org-export-derived-backend-p backend 'html) "html")
+	   ((org-export-derived-backend-p backend 'odt) "odt")))
+	 (args (append (list output-format cslfile) bibfiles)))
+    (save-excursion
+      (set-buffer output-buffer)
+      (erase-buffer)
+      (set-buffer json-buffer)
+      (unless (zerop (call-process-region
+		      (point-min)
+		      (point-max)
+		      org-cite--org-citeproc-binary
+		      nil
+		      output-buffer
+		      nil
+		      args))
+	(error "Non-zero exit from org-citeproc; args = %S"
+	       args)))
+    output-buffer))
 
 
 ;;; Citation modes
@@ -262,12 +302,23 @@ Will generate an error when used in other document types."
     (org-cite--html-to-org-inner parse)))
 
 (defun org-cite-format-bibliography (info)
-  ;; TODO: sort the bibliography
-  (let ((backend (plist-get info :back-end)))
+  "Return the formatted bibliography for a document.
+
+Export backends should call this function to get the result of
+generating a bibliography for citations in the document, and wrap
+its return value in any backend-specific markup they wish.
+
+In the special case of a latex-derived backend, this function
+just returns a string containing the \\printbibliography
+command."
+  (let ((backend (plist-get info :back-end))
+	(processed-bib (plist-get info :processed-bibliography)))
     (if (org-export-derived-backend-p backend 'latex)
 	;; TODO:
 	;; - options for the bibliography command
 	;; - support plain bibtex and/or natbib as well
+	;; - maybe allow inserting processed bib anyway (since pandoc-citeproc
+	;;   is capable of generating LaTeX)
 	"\\printbibliography{}"
       ;; TODO:
       ;; - add section header to output
@@ -277,23 +328,9 @@ Will generate an error when used in other document types."
       ;;   textually (ideally, generate the org syntax tree directly)
       ;; - formatting options for the bibliography (numbered
       ;;   vs. unnumbered list, ...)
-      (with-temp-buffer
-	(insert
-	 (org-cite--html-to-org
-	  (apply #'org-cite--run-citeproc-java
-		 ;; TODO: make customizable
-		 "-s" "chicago-author-date"
-		 "-f" "html"
-		 "-b" (plist-get info :cite-bibtex-file)
-		 (plist-get info :cite-used-keys))))
-	;; TODO: how expensive is this copy-sequence?  Maybe a plist
-	;; extension to letf (or a manually-constructed equivalent)
-	;; would be better.
-	(let ((new-info (copy-sequence info)))
-	  (plist-put new-info :cite-used-keys nil)
-	  ;; TODO: do we need to strip other citation-related keywords
-	  ;; as well?
-	  (org-export-as backend nil nil t new-info))))))
+      (if processed-bib processed-bib
+        ; TODO: is error the right thing to do here?  
+	(error "No processed bibliography found")))))
 
 
 ;;; Lookup types
@@ -350,7 +387,29 @@ Alist from type to list of:
   #'org-cite--org-bibtex-lookup
   nil)
 
-;;; TODO: bibtex, DOI resolver via internet
+(defun org-cite--bibtex-prep (path info)
+  ; store path separately in cite-bibtex-files for the sake of
+  ; lookups, but also in cite-all-bib-files, which will be passed to
+  ; org-citeproc, since org-citeproc can read bibtex format among
+  ; others
+  (plist-put info :cite-bibtex-files
+	     (cons path (plist-get info :cite-bibtex-files)))
+  (plist-put info :cite-all-bib-files
+	     (cons path (plist-get info :cite-all-bib-files))))
+
+(defun org-cite--bibtex-lookup (key info)
+  (let* ((bibtex-files (plist-get info :cite-bibtex-files))
+	 (pos (bibtex-find-entry key t nil t))) ; bibtex-find-entry implicitly reads bibtex-files
+	(if pos (goto-char pos)
+	  (error "Could not find key %s" key))))
+
+(org-cite-add-lookup-type
+ "bibtex"
+ #'org-cite--bibtex-prep
+ #'org-cite--bibtex-lookup
+ nil)
+
+;;; TODO: DOI resolver via internet
 
 (defun org-cite-lookup (key info)
   ;; TODO: memoize, document
@@ -367,7 +426,7 @@ Alist from type to list of:
 (defun org-cite--to-bibtex (cite-info)
   (let* ((key (car cite-info))
 	 (info (cdr cite-info))
-	 (type (alist-get 'btype info))
+	 (type (cdr (assoc 'btype info))) ;; alist-get??
 	 (info (remove (assq 'btype info) info)))
     (concat (format
 	     ;; TODO: use the proper entry type
@@ -389,25 +448,44 @@ Alist from type to list of:
 
 ;;; Integration with export functions
 
-(defun org-cite--collect-citation (info citation)
+(defun org-cite--collect-citation-key (info citation)
   (let ((used-keys (plist-get info :cite-used-keys))
 	(key (org-element-property :key citation)))
     (unless (member key used-keys)
       (plist-put info :cite-used-keys
 		 (cons key used-keys)))))
 
+(defun org-cite--collect-citation (info citation)
+  (let ((all-cites (plist-get info :all-cites))
+	(unique-id (gensym "cite")))
+    ; modify citation by assigning it a unique id as we collect
+    ; it into all-cites, so we can later unambiguously look up the
+    ; processed version when exporting it
+    (org-element-put-property citation :internal-id unique-id)
+    (plist-put info :all-cites (cons citation all-cites))))
+
+(defun org-cite--keys-in-citation (citation)
+  "Return a list of the keys used in a citation object"
+  ;; TODO: need to make this work with multi-cites
+  (list (org-element-property :key citation)))
+
 (defun org-cite--make-bibtex (info)
-  (if-let (used-keys (plist-get info :cite-used-keys))
-      (let ((file (make-temp-file "org-cite")))
-	(plist-put info :cite-bibtex-file file)
+  (let* ((all-cites (plist-get info :all-cites))
+	 (used-keys (plist-get info :cite-used-keys))
+	 (file (make-temp-file "org-cite"))
+	 (btex-files (plist-get info :cite-bibtex-files))
+	 (all-bib-files (plist-get info :cite-all-bib-files)))
+    (if (not all-cites) (message "No citations")
+      (progn
+	(plist-put info :cite-bibtex-files (cons file btex-files))
+	(plist-put info :cite-all-bib-files (cons file all-bib-files))
 	(with-temp-file file
 	  (insert
 	   (mapconcat
 	    (lambda (key)
 	      (org-cite--to-bibtex (cons key (org-cite-lookup key info))))
 	    used-keys
-	    "\n\n"))))
-    (message "No citations")
+	      "\n\n")))))
     nil))
 
 (defun org-cite--get-author-year (info)
@@ -431,12 +509,86 @@ Alist from type to list of:
     (message "No citations")
     nil))
 
+(defvar org-cite--cites-separator-re "////$"
+  "Regular expression for the separator between citations in
+org-citeproc results")
+
+(defvar org-cite--cites-bib-separator-re "^====$"
+  "Regular expression for the separator between citations and the
+bibliography in org-citeproc results")
+
+(defun org-cite--process-citations (backend info)
+  "Use org-citeproc to process the citations in the current document and produce
+a bibliography.
+
+Stores processed citations on INFO under :processed-citations, which is an alist
+mapping citations' :internal-id fields to strings.
+
+Stores the processed bibliography on INFO under :processed-bibliography as a
+string.
+
+Assumes INFO has been prepared to have :all-cites, :cite-csl-file, and
+:cite-bibtex-files properties, as `org-cite-export-prepare' does,
+and that citations in :all-cites have an :internal-id property."
+  (let* ((all-cites (plist-get info :all-cites))
+	 ;; TODO: props for filenames?
+	 (cslfile (plist-get info :cite-csl-file))
+	 (bibfiles (plist-get info :cite-bibtex-files))
+	 (results-buffer nil)
+	 (end-of-cites nil))
+    (unless all-cites (message "No citations"))
+    (when (and all-cites (not (org-export-derived-backend-p backend 'latex)))
+      (with-temp-buffer
+	(mapc (lambda (c) (insert (org-citation-to-json c) "\n")) all-cites)
+	(setq results-buffer
+	      (org-cite--run-org-citeproc (current-buffer) backend cslfile bibfiles))))
+    (when results-buffer
+      (save-excursion
+	(set-buffer results-buffer)
+	(goto-char (point-min))
+	(unless (re-search-forward org-cite--cites-bib-separator-re nil t)
+	  (error "Could not find separator between citations and bibliography"))
+	(setq end-of-cites (1- (match-beginning 0)))
+	; after search, point is after separator, so stash the
+	; bibliography first
+	(plist-put info :processed-bibliography (buffer-substring (1+ (point)) (point-max)))
+	; next, stash the processed citations
+	; TODO: should we just store this info in the citation objects themselves?
+	; That modifies the document tree, but would prevent the tree and info
+	; from getting out of sync.
+	(goto-char (point-min))
+	(save-restriction
+	  (narrow-to-region (point-min) end-of-cites)
+	  (let ((processed-cites nil)
+		(last-pos (point)))
+	    (while (re-search-forward org-cite--cites-separator-re nil t)
+	      (setq processed-cites
+		    (cons (buffer-substring last-pos (match-beginning 0))
+			  processed-cites))
+	      (setq last-pos (goto-char (1+ (match-end 0)))))
+	    (unless (eq (length all-cites) (length processed-cites))
+	       (error "org-citeproc did not return correct number of citations"))
+	    (plist-put info :processed-citations
+                	; TODO: we need to address the issue of
+			; incompatibility between pandoc-style nested
+			; multi-citations and LaTeX-style
+			; multi-citations in the in-text case.
+			; Depending on how that's resolved, the
+			; mapping between all-cites and
+			; processed-cites may not be 1-1...
+		       (mapcar*
+			(lambda (ct res) (list (org-element-property :internal-id ct) res))
+			all-cites
+			processed-cites)))))))
+  nil)
+
 (defun org-cite-export-prepare (tree info)
   "Build a citation database from the #+BIBDB keywords in TREE.
 
 Store the information in INFO.  Returns a modified copy of INFO;
 does not modify TREE."
-  (let* ((lookup-types (mapcar #'car org-cite--lookup-types))
+  (let* ((backend (plist-get info :back-end))
+	 (lookup-types (mapcar #'car org-cite--lookup-types))
 	 (lookup-types-re (regexp-opt lookup-types))
 	 cite-mode cite-style
 	 used-lookup-types)
@@ -462,46 +614,53 @@ does not modify TREE."
 	    (setq cite-mode kw-val))
 	  (when (string= kw-key "CITATION_STYLE")
 	    ;; TODO: handle multiple specifications of CITATION_STYLE
-	    (setq cite-style kw-val)))))
+	    (setq cite-style kw-val))
+	  (when (string= kw-key "CSL_FILE")
+	    ;; TODO: this should probably not be a separate keyword, but rather
+	    ;; inferred from CITATION_STYLE in an appropriate way.  Need a 
+	    ;; defined semantics for CITATION_STYLE across LaTeX/non-LaTeX targets.
+	    (plist-put info :cite-csl-file kw-val)))))
     ;; TODO: is it possible for this procedure to overgenerate?
     ;; Better might be to add the keys one by one in
     ;; `org-cite--do-export', but IDK how to ensure this is all done
     ;; before the bibliography is exported.
+    ;; TODO: :cite-used-keys is required by org-cite--make-bibtex.  This information
+    ;; should instead be recovered from :all-cites.
+    (org-element-map tree 'citation
+      (apply-partially #'org-cite--collect-citation-key info))
+
     (org-element-map tree 'citation
       (apply-partially #'org-cite--collect-citation info))
+
     ;; TODO: populate a temp file with all entries in bibtex format,
     ;; needed for the citation processor.  Provide an option to stuff
     ;; this into filecontents in latex.  Requires greedy lookup of
     ;; citations from remote resources.
-    (org-cite--plist-put-multiple info
-      :cite-function (cdr (assoc cite-mode org-cite--citation-modes))
-      :cite-bibentry-function (cdr (assoc cite-style org-cite--citation-styles))
-      :cite-lookup-types used-lookup-types)
+    ;; (org-cite--plist-put-multiple info
+    ;;   :cite-function (cdr (assoc cite-mode org-cite--citation-modes))
+    ;;   :cite-bibentry-function (cdr (assoc cite-style org-cite--citation-styles))
+    ;;   :cite-lookup-types used-lookup-types)
+
     ;; Now that the lookup info is in the plist, we'll generate a temp
     ;; file with all the bib entries in it and stash the path to it in
     ;; the plist.  TODO: arrange to remove this file later.
     (org-cite--make-bibtex info)
-    ;; The next step is to use our custom CSL file to extract the
-    ;; correct author and year for each citation in the document.
-    ;; TODO: this can be safely skipped if we're using a latex-derived
-    ;; backend.
-    (org-cite--get-author-year info)
+    ;; Finally, process the citations and store the results on info
+    (org-cite--process-citations backend info)
     info))
 
 (defun org-cite-format-citation (citation _contents info)
   "Export a citation object.
 
-Export backends should call this function to get a general
-citation text, and wrap its return value in any backend-specific
-markup they wish."
-  (let ((key (org-element-property :key citation)))
-    (funcall (plist-get info :cite-function)
-	     (plist-get info :back-end)
-	     info
-	     `(:capitalized
-	       nil  ; TODO: pending parser support
-	       :parenthesized ,(org-element-property :parentheticalp citation)
-	       :prefix ,(org-export-data (org-element-property :prefix citation) info)
-	       :suffix ,(org-export-data (org-element-property :suffix citation) info))
-	     (cons key (org-cite-lookup key info))
-	     (lambda () (org-cite-format-bibentry key info)))))
+Export backends should call this function to get the result of
+processing a citation, and wrap its return value in any
+backend-specific markup they wish."
+  (let* ((int-id (org-element-property :internal-id citation))
+	 (processed-cites (plist-get info :processed-citations))
+	 (processed (cadr (assoc int-id processed-cites))))
+    (unless processed
+      ; TODO: is error the right thing to do here?  
+      (error "No processed citation found for citation %s" int-id))
+    processed))
+
+(provide 'org-cite)
