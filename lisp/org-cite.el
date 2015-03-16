@@ -528,20 +528,21 @@ Alist from type to list of:
 (defun org-cite--make-bibtex (info)
   (let* ((all-cites (plist-get info :all-cites))
 	 (used-keys (plist-get info :cite-used-keys))
-	 (file (make-temp-file "org-cite"))
+	 (file (make-temp-file "org-cite" nil ".bib"))
 	 (btex-files (plist-get info :cite-bibtex-files))
+	 (org-btex-files (plist-get info :cite-org-bibtex-files))
 	 (all-bib-files (plist-get info :cite-all-bib-files)))
-    (if (not all-cites) (message "No citations")
-      (progn
-	(plist-put info :cite-bibtex-files (cons file btex-files))
-	(plist-put info :cite-all-bib-files (cons file all-bib-files))
-	(with-temp-file file
-	  (insert
-	   (mapconcat
-	    (lambda (key)
-	      (org-cite--to-bibtex (cons key (org-cite-lookup key info))))
-	    used-keys
-	      "\n\n")))))
+    (when org-btex-files
+      (plist-put info :cite-bibtex-files (cons file btex-files))
+      (plist-put info :cite-all-bib-files (cons file all-bib-files))
+      (with-temp-file file
+	(insert
+	 (mapconcat
+	  (lambda (key)
+	    ;; TODO: what if key is not in an org-bibtex file...?
+	    (org-cite--to-bibtex (cons key (org-cite-lookup key info))))
+	  used-keys
+	  "\n\n"))))
     nil))
 
 (defun org-cite--get-author-year (info)
