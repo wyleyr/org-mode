@@ -13,10 +13,6 @@
 ;;; TODO: calling with args backend and info is redundant, since
 ;;; backend can be gotten from info
 
-;;; TODO: once it's clear how to get the citation-references inside a
-;;; citation, need to add support for multi-cites, and add
-;;; JSON-generating utilities here.
-
 
 ;;; Utilities
 
@@ -82,6 +78,66 @@
 ;; 	(error "Non-zero exit from citeproc-java; args = %S"
 ;; 	       args))
 ;;       (buffer-string))))
+
+;; JSON generating utilities
+;; TODO: once it's clear how to get the citation-references inside a
+;; citation, need to add support for multi-cites.
+;; For now, the citation object itself has :key, :parenthetical, etc., in
+;; this branch 
+
+;; Helper; shouldn't Elisp have this already??
+(defun map-plist (f plist)
+  "Map F over the key-value pairs in PLIST.  F is called with
+each key and its associated value as its first and second
+arguments, respectively."
+  (if (or (null plist) (null (cdr plist))) '() ; values must be paired
+    (let ((k (car plist))
+          (v (cadr plist)))
+        (cons (funcall f k v) (map-plist f (cddr plist))))))
+
+(defun org-cite-citations-to-json (citations)
+  "Translate a list of Org citation objects to a JSON array that can
+be read by citeproc-js"
+  (if (null citations) ""
+    (format "[ %s ]" (mapconcat 'org-cite-citation-to-json citations ", "))))
+
+(defun org-cite-citation-to-json (citation)
+  "Translate an Org citation object to a JSON citation data
+object that can be read by citeproc-js"
+  (let* ((json-data (org-cite-citation-reference-to-json citation)))
+    (if json-data
+        ;; TODO: add properties key that sets noteIndex
+	;; TODO: handle common prefix and suffix 
+        (format "{ \"citationItems\": [ %s ] }" json-data)
+      "")))
+
+(defun org-cite-citation-reference-to-json (reference)
+  "Translate a citation-reference within an Org citation object
+to JSON data that can be read by citeproc-js"
+  (let* ((parenp (org-element-property :parentheticalp reference))
+	 (json-props (map-plist 'org-cite--citation-reference-property-to-json
+				(append (list :parenthetical parenp)
+					(nth 1 reference))))
+	 (json-data (remove-if-not 'identity json-props)))
+    (if json-data (format "{ %s }" (mapconcat 'identity json-data ", "))
+      "")))
+
+(defun org-cite--citation-reference-property-to-json (prop val)
+  "Translate a property of a citation-reference to JSON data"
+  ; TODO: prefix and suffix vals should be transcoded by the current
+  ; export backend
+  (case prop
+    (:key (format "\"id\": \"%s\"" val))
+    (:prefix (format "\"prefix\": \"%s\"" (org-element-interpret-data val)))
+    (:suffix (format "\"suffix\": \"%s\"" (org-element-interpret-data val)))
+    (:parenthetical (if (not val) (format "\"author-in-text\": true") nil))
+    ;; TODO: citeproc implementations use these fields, so we should extract them:
+    (:suppress-author (if val (format "\"suppress-author\": true") nil))
+    (:author-only (if val (format "\"author-only\": true") nil))
+    (:label (format "\"label\": \"%s\"" val))
+    (:locator (format "\"locator\": \"%s\"" val))
+    ; otherwise, case returns nil
+    ))
 
 (defun org-cite--run-org-citeproc (json-buffer backend cslfile bibfiles)
   "Run the org-citeproc program, passing it the following arguments:
