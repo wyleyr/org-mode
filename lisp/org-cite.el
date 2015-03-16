@@ -154,20 +154,22 @@ Returns a buffer containing the results of org-citeproc.
 	  (cond
 	   ((org-export-derived-backend-p backend 'ascii) "ascii")
 	   ((org-export-derived-backend-p backend 'html) "html")
-	   ((org-export-derived-backend-p backend 'odt) "odt")))
-	 (args (append (list output-format cslfile) bibfiles)))
+	   ((org-export-derived-backend-p backend 'odt) "odt")
+	   (t (error "Backend not supported by org-citeproc: %s" backend))))
+	 (args (append (list output-format (expand-file-name cslfile))
+		       (mapcar 'expand-file-name bibfiles))))
     (save-excursion
       (set-buffer output-buffer)
       (erase-buffer)
       (set-buffer json-buffer)
-      (unless (zerop (call-process-region
-		      (point-min)
-		      (point-max)
-		      org-cite--org-citeproc-binary
-		      nil
-		      output-buffer
-		      nil
-		      args))
+      (unless (zerop (apply #'call-process-region
+			(point-min)
+			(point-max)
+			org-cite--org-citeproc-binary
+			nil
+			output-buffer
+			nil
+			args))
 	(error "Non-zero exit from org-citeproc; args = %S"
 	       args)))
     output-buffer))
@@ -596,7 +598,7 @@ and that citations in :all-cites have an :internal-id property."
     (unless all-cites (message "No citations"))
     (when (and all-cites (not (org-export-derived-backend-p backend 'latex)))
       (with-temp-buffer
-	(mapc (lambda (c) (insert (org-citation-to-json c) "\n")) all-cites)
+	(insert (org-cite-citations-to-json all-cites))
 	(setq results-buffer
 	      (org-cite--run-org-citeproc (current-buffer) backend cslfile bibfiles))))
     (when results-buffer
@@ -623,6 +625,7 @@ and that citations in :all-cites have an :internal-id property."
 		    (cons (buffer-substring last-pos (match-beginning 0))
 			  processed-cites))
 	      (setq last-pos (goto-char (1+ (match-end 0)))))
+	    (setq processed-cites (nreverse processed-cites))
 	    (unless (eq (length all-cites) (length processed-cites))
 	       (error "org-citeproc did not return correct number of citations"))
 	    (plist-put info :processed-citations
