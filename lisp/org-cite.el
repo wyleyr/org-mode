@@ -30,6 +30,15 @@
 	    (plist-put ,plist ,key ,val) ,@more)))
     plist))
 
+;; Helper; shouldn't Elisp have this already??
+(defun org-cite--map-plist (f plist)
+  "Map F over the key-value pairs in PLIST.  F is called with
+each key and its associated value as its first and second
+arguments, respectively."
+  (if (or (null plist) (null (cdr plist))) '() ; values must be paired
+    (cons (funcall f (car plist) (cadr plist))
+	  (org-cite--map-plist f (cddr plist)))))
+
 ;;; TODO: defcustom
 ;; (defconst org-cite--citeproc-java-lib-path
 ;;   (expand-file-name "../lib/"
@@ -80,20 +89,7 @@
 ;;       (buffer-string))))
 
 ;; JSON generating utilities
-;; TODO: once it's clear how to get the citation-references inside a
-;; citation, need to add support for multi-cites.
-;; For now, the citation object itself has :key, :parenthetical, etc., in
-;; this branch 
 
-;; Helper; shouldn't Elisp have this already??
-(defun map-plist (f plist)
-  "Map F over the key-value pairs in PLIST.  F is called with
-each key and its associated value as its first and second
-arguments, respectively."
-  (if (or (null plist) (null (cdr plist))) '() ; values must be paired
-    (let ((k (car plist))
-          (v (cadr plist)))
-        (cons (funcall f k v) (map-plist f (cddr plist))))))
 
 (defun org-cite-citations-to-json (citations)
   "Translate a list of Org citation objects to a JSON array that can
@@ -115,9 +111,10 @@ object that can be read by citeproc-js"
   "Translate a citation-reference within an Org citation object
 to JSON data that can be read by citeproc-js"
   (let* ((parenp (org-element-property :parentheticalp reference))
-	 (json-props (map-plist 'org-cite--citation-reference-property-to-json
-				(append (list :parenthetical parenp)
-					(nth 1 reference))))
+	 (json-props (org-cite--map-plist
+		      'org-cite--citation-reference-property-to-json
+		      (append (list :parenthetical parenp)
+			      (nth 1 reference))))
 	 (json-data (remove-if-not 'identity json-props)))
     (if json-data (format "{ %s }" (mapconcat 'identity json-data ", "))
       "")))
