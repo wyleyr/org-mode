@@ -90,6 +90,26 @@ arguments, respectively."
 
 ;; JSON generating utilities
 
+(defun org-cite--get-references (citation)
+  "Get the list of citation-references within a citation, parsing
+them from the buffer if necessary."
+  (let* ((contents (org-element-contents citation))
+	 (refs (remove-if-not
+		(lambda (o) (and (listp o) (eq (car o) 'citation-reference)))
+		contents)))
+    (unless refs 
+      ; citation-references within citation were not previously
+      ; parsed, so we need to parse them:
+      (save-excursion
+	(goto-char (org-element-property :contents-begin citation))
+	(let ((end (org-element-property :contents-end citation)))
+	  (while (< (point) end)
+	    (let ((reference (org-element-lineage
+			      (org-element-context) '(citation-reference) t)))
+	      (push reference refs)
+	      (goto-char (org-element-property :end reference)))))
+	(setq refs (nreverse refs))))
+    refs))
 
 (defun org-cite-citations-to-json (citations)
   "Translate a list of Org citation objects to a JSON array that can
@@ -98,19 +118,23 @@ be read by citeproc-js"
     (format "[ %s ]" (mapconcat 'org-cite-citation-to-json citations ", "))))
 
 (defun org-cite-citation-to-json (citation)
-  "Translate an Org citation object to a JSON citation data
+    "Translate an Org citation object to a JSON citation data
 object that can be read by citeproc-js"
-  (let* ((json-data (org-cite-citation-reference-to-json citation)))
-    (if json-data
+  (let* ((parenp (org-element-property :parenthetical citation))
+	 (refs (org-cite--get-references citation))
+         (json-refs
+	  (mapconcat 'org-cite-citation-reference-to-json refs ", ")))
+    (if refs
         ;; TODO: add properties key that sets noteIndex
 	;; TODO: handle common prefix and suffix 
-        (format "{ \"citationItems\": [ %s ] }" json-data)
+        (format "{ \"citationItems\": [ %s ] }" json-refs)
       "")))
 
 (defun org-cite-citation-reference-to-json (reference)
   "Translate a citation-reference within an Org citation object
 to JSON data that can be read by citeproc-js"
-  (let* ((parenp (org-element-property :parentheticalp reference))
+  (let* ((parenp (org-element-property :parenthetical
+				       (org-element-property :parent reference)))
 	 (json-props (org-cite--map-plist
 		      'org-cite--citation-reference-property-to-json
 		      (append (list :parenthetical parenp)
