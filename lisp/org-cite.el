@@ -123,11 +123,33 @@ object that can be read by citeproc-js"
   (let* ((parenp (org-element-property :parenthetical citation))
 	 (refs (org-cite--get-references citation))
          (json-refs
-	  (mapconcat 'org-cite-citation-reference-to-json refs ", ")))
+	  (mapconcat 'org-cite-citation-reference-to-json refs ", "))
+	 (props (org-cite--citation-properties-to-json citation))
+	 (json-props (if (string= props "") ""
+		       (concat ", " props))))
     (if refs
-        ;; TODO: add properties key that sets noteIndex
-	;; TODO: handle common prefix and suffix 
-        (format "{ \"citationItems\": [ %s ] }" json-refs)
+        (format "{ \"citationItems\": [ %s ] %s}" json-refs json-props)
+      "")))
+
+(defun org-cite--citation-properties-to-json (citation)
+  "Translate the common prefix and suffix of a citation to JSON
+data"
+  ; TODO: noteIndex
+  ; TODO: common prefix and suffix are non-standard extensions;
+  ; option for "strict" citeproc-js JSON?
+  ; TODO: common prefix and suffix should be run through export backend
+  ; TODO: add whitespace after prefix and before suffix?
+  (let* ((prefix (org-element-property :prefix citation))
+	 (json-prefix (if prefix (format "\"common-prefix\": \"%s\""
+					 (org-element-interpret-data prefix))
+			""))
+	 (suffix (org-element-property :suffix citation))
+	 (json-suffix (if suffix (format "\"common-suffix\": \"%s\""
+					 (org-element-interpret-data suffix))
+			"")))
+    (if (or prefix suffix)
+	(format "\"properties\": { %s }"
+		(mapconcat 'identity (list json-prefix json-suffix) ", "))
       "")))
 
 (defun org-cite-citation-reference-to-json (reference)
