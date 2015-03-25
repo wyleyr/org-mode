@@ -124,12 +124,12 @@ object that can be read by citeproc-js"
 	 (refs (org-cite--get-references citation))
          (json-refs
 	  (mapconcat 'org-cite-citation-reference-to-json refs ", "))
-	 (props (org-cite--citation-properties-to-json citation))
-	 (json-props (if (string= props "") ""
-		       (concat ", " props))))
-    (if refs
-        (format "{ \"citationItems\": [ %s ] %s}" json-refs json-props)
-      "")))
+	 (props (org-cite--citation-properties-to-json citation)))
+    (cond
+     ((and refs props)
+      (format "{ \"citationItems\": [ %s ], %s}" json-refs json-props))
+     (refs (format "{ \"citationItems\": [ %s ]}" json-refs))
+     (t ""))))
 
 (defun org-cite--citation-properties-to-json (citation)
   "Translate the common prefix and suffix of a citation to JSON
@@ -137,20 +137,15 @@ data"
   ; TODO: noteIndex
   ; TODO: common prefix and suffix are non-standard extensions;
   ; option for "strict" citeproc-js JSON?
-  ; TODO: common prefix and suffix should be run through export backend
   ; TODO: add whitespace after prefix and before suffix?
-  (let* ((prefix (org-element-property :prefix citation))
-	 (json-prefix (if prefix (format "\"common-prefix\": \"%s\""
-					 (org-element-interpret-data prefix))
-			""))
-	 (suffix (org-element-property :suffix citation))
-	 (json-suffix (if suffix (format "\"common-suffix\": \"%s\""
-					 (org-element-interpret-data suffix))
-			"")))
-    (if (or prefix suffix)
-	(format "\"properties\": { %s }"
-		(mapconcat 'identity (list json-prefix json-suffix) ", "))
-      "")))
+  (let* ((cprefix (org-element-property :prefix citation))
+	 (json-prefix (org-cite--property-to-json :common-prefix cprefix))
+	 (csuffix (org-element-property :suffix citation))
+	 (json-suffix (org-cite--property-to-json :common-prefix csuffix))
+	 (json-props (remove-if-not 'identity (list cprefix csuffix))))
+    (when json-props
+	(format "\"properties\": { %s }" (mapconcat 'identity json-props ", ")))))
+	
 
 (defun org-cite-citation-reference-to-json (reference)
   "Translate a citation-reference within an Org citation object
@@ -158,21 +153,25 @@ to JSON data that can be read by citeproc-js"
   (let* ((parenp (org-element-property :parenthetical
 				       (org-element-property :parent reference)))
 	 (json-props (org-cite--map-plist
-		      'org-cite--citation-reference-property-to-json
+		      'org-cite--property-to-json
 		      (append (list :parenthetical parenp)
 			      (nth 1 reference))))
 	 (json-data (remove-if-not 'identity json-props)))
     (if json-data (format "{ %s }" (mapconcat 'identity json-data ", "))
       "")))
 
-(defun org-cite--citation-reference-property-to-json (prop val)
-  "Translate a property of a citation-reference to JSON data"
+(defun org-cite--property-to-json (prop val)
+  "Translate a property of a citation or citation-reference to JSON data"
   ; TODO: prefix and suffix vals should be transcoded by the current
   ; export backend
   (case prop
     (:key (format "\"id\": \"%s\"" val))
     (:prefix (format "\"prefix\": \"%s\"" (org-element-interpret-data val)))
     (:suffix (format "\"suffix\": \"%s\"" (org-element-interpret-data val)))
+    (:common-prefix
+     (format "\"common-prefix\": \"%s\"" (org-element-interpret-data val)))
+    (:common-suffix
+     (format "\"common-suffix\": \"%s\"" (org-element-interpret-data val)))
     (:parenthetical (if (not val) (format "\"author-in-text\": true") nil))
     ;; TODO: citeproc implementations use these fields, so we should extract them:
     (:suppress-author (if val (format "\"suppress-author\": true") nil))
@@ -722,6 +721,7 @@ does not modify TREE."
 	    ;; TODO: this should probably not be a separate keyword, but rather
 	    ;; inferred from CITATION_STYLE in an appropriate way.  Need a 
 	    ;; defined semantics for CITATION_STYLE across LaTeX/non-LaTeX targets.
+	    ;; TOOD: this doesn't get picked up when exporting subtrees
 	    (plist-put info :cite-csl-file kw-val)))))
     ;; TODO: is it possible for this procedure to overgenerate?
     ;; Better might be to add the keys one by one in
