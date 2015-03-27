@@ -124,9 +124,9 @@ object that can be read by citeproc-js"
 	 (refs (org-cite--get-references citation))
          (json-refs
 	  (mapconcat 'org-cite-citation-reference-to-json refs ", "))
-	 (props (org-cite--citation-properties-to-json citation)))
+	 (json-props (org-cite--citation-properties-to-json citation)))
     (cond
-     ((and refs props)
+     ((and refs json-props)
       (format "{ \"citationItems\": [ %s ], %s}" json-refs json-props))
      (refs (format "{ \"citationItems\": [ %s ]}" json-refs))
      (t ""))))
@@ -139,10 +139,12 @@ data"
   ; option for "strict" citeproc-js JSON?
   ; TODO: add whitespace after prefix and before suffix?
   (let* ((cprefix (org-element-property :prefix citation))
-	 (json-prefix (org-cite--property-to-json :common-prefix cprefix))
+	 (json-prefix (and cprefix
+			   (org-cite--property-to-json :common-prefix cprefix)))
 	 (csuffix (org-element-property :suffix citation))
-	 (json-suffix (org-cite--property-to-json :common-prefix csuffix))
-	 (json-props (remove-if-not 'identity (list cprefix csuffix))))
+	 (json-suffix (and csuffix
+			   (org-cite--property-to-json :common-suffix csuffix)))
+	 (json-props (remove-if-not 'identity (list json-prefix json-suffix))))
     (when json-props
 	(format "\"properties\": { %s }" (mapconcat 'identity json-props ", ")))))
 	
