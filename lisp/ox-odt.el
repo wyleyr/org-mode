@@ -31,12 +31,14 @@
 (require 'format-spec)
 (require 'ox)
 (require 'org-compat)
+(require 'org-cite)
 
 ;;; Define Back-End
 
 (org-export-define-backend 'odt
   '((bold . org-odt-bold)
     (center-block . org-odt-center-block)
+    (citation . org-odt-citation)
     (clock . org-odt-clock)
     (code . org-odt-code)
     (drawer . org-odt-drawer)
@@ -1611,6 +1613,12 @@ CONTENTS holds the contents of the center block.  INFO is a plist
 holding contextual information."
   contents)
 
+;;;; Citation
+(defun org-odt-citation (citation contents info)
+  "Transcode a CITATION object from Org to ODT.
+CONTENTS holds the contents of the citation. INFO is a plist
+holding contextual information."
+  (org-cite-format-citation citation contents info))
 
 ;;;; Clock
 
@@ -2022,7 +2030,9 @@ information."
 	    (org-odt-toc depth info (and localp keyword))))
 	 ((org-string-match-p "tables\\|figures\\|listings" value)
 	  ;; FIXME
-	  (ignore))))))))
+	  (ignore)))))
+     ((string= key "BIBLIOGRAPHY")
+      (org-cite-format-bibliography info)))))
 
 
 ;;;; Latex Environment
