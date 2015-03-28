@@ -33,6 +33,7 @@
 (require 'ox)
 (require 'ox-publish)
 (require 'format-spec)
+(require 'org-cite)
 (eval-when-compile (require 'cl) (require 'table nil 'noerror))
 (require 'cl-lib)
 

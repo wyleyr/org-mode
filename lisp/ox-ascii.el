@@ -30,6 +30,7 @@
 (eval-when-compile (require 'cl))
 (require 'ox)
 (require 'ox-publish)
+(require 'org-cite)
 
 (declare-function aa2u "ext:ascii-art-to-unicode" ())
 
