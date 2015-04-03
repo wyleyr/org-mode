@@ -131,7 +131,7 @@ for JSON encoding"
   (let* ((refs (org-cite--get-references citation))
          (refs-plists (mapcar 'org-cite--citation-reference-to-plist refs))
 	 ; json.el guesses wrong about how to encode a list of plists
-	 ; like refs-plists, so we transform it to a vector to ensure it
+	 ; such as refs-plists, so we transform it to a vector to ensure it
 	 ; is eventually encoded as an array of objects, rather than an object:
 	 (refs-vec (apply 'vector refs-plists))
 	 (prefix (org-element-property :prefix citation))
@@ -165,9 +165,9 @@ to a plist, in preparation for JSON encoding"
 				       (org-element-property :parent reference)))
 	 (fields (list :prefix :suffix
 		       ; not :key, because it must be renamed :id.
-		       ; TODO: org-citeproc will interpret these if
-		       ; they are provided, but they are not currently
-		       ; parsed by Org:
+		       ; TODO: org-citeproc and citeproc-js will
+		       ; interpret these if they are provided, but
+		       ; they are not currently parsed by Org:
 		       :suppress-author :author-only :label :locator))
 	 (plist
 	  (append (list :id (org-element-property :key reference))
@@ -199,6 +199,7 @@ should be an Org object, and KEYWORDS a list of keywords."
 		    (extract (cdr props) new-acc)))))
 	     (extract keywords '())))
 
+;; org-citeproc utilities
 
 (defun org-cite--run-org-citeproc (json-buffer backend cslfile bibfiles)
   "Run the org-citeproc program, passing it the following arguments:
