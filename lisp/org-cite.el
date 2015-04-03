@@ -188,16 +188,16 @@ to a plist, in preparation for JSON encoding"
   "Extract a plist from OBJECT whose keys are each of the
 KEYWORDS where OBJECT has a non-nil property value.  OBJECT
 should be an Org object, and KEYWORDS a list of keywords."
-  (flet ((extract (props accumulated)
-	    (if (null props)
-		accumulated
-	      (let* ((prop (car props))
-		     (val (org-element-property prop object))
-		     (new-acc (if val
-				  (cons prop (cons val accumulated))
-				accumulated)))
-		(extract (cdr props) new-acc)))))
-   (extract keywords '())))
+  (cl-labels ((extract (props accumulated)
+	        (if (null props)
+		    accumulated
+		  (let* ((prop (car props))
+			 (val (org-element-property prop object))
+			 (new-acc (if val
+				      (cons prop (cons val accumulated))
+				    accumulated)))
+		    (extract (cdr props) new-acc)))))
+	     (extract keywords '())))
 
 
 (defun org-cite--run-org-citeproc (json-buffer backend cslfile bibfiles)
