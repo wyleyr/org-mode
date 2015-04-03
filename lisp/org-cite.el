@@ -151,23 +151,6 @@ for JSON encoding"
      (refs-plists
       (list :citationItems refs-vec)))))
 
-(defun org-cite--citation-properties-to-json (citation)
-  "Translate the common prefix and suffix of a citation to JSON
-data"
-  ; TODO: noteIndex
-  ; TODO: common prefix and suffix are non-standard extensions;
-  ; option for "strict" citeproc-js JSON?
-  ; TODO: add whitespace after prefix and before suffix?
-  (let* ((cprefix (org-element-property :prefix citation))
-	 (json-prefix (and cprefix
-			   (org-cite--property-to-json :common-prefix cprefix)))
-	 (csuffix (org-element-property :suffix citation))
-	 (json-suffix (and csuffix
-			   (org-cite--property-to-json :common-suffix csuffix)))
-	 (json-props (remove-if-not 'identity (list json-prefix json-suffix))))
-    (when json-props
-	(format "\"properties\": { %s }" (mapconcat 'identity json-props ", ")))))
-	
 (defun org-cite-citation-reference-to-json (reference)
   "Translate a citation-reference within an Org citation object
 to JSON data that can be read by citeproc-js"
@@ -200,7 +183,6 @@ to a plist, in preparation for JSON encoding"
       (setq plist
 	    (plist-put plist :suffix (org-element-interpret-data suffix))))
     plist))
-	 
 
 (defun org-cite--object-extract-plist (object keywords)
   "Extract a plist from OBJECT whose keys are each of the
@@ -217,26 +199,6 @@ should be an Org object, and KEYWORDS a list of keywords."
 		(extract (cdr props) new-acc)))))
    (extract keywords '())))
 
-(defun org-cite--property-to-json (prop val)
-  "Translate a property of a citation or citation-reference to JSON data"
-  ; TODO: prefix and suffix vals should be transcoded by the current
-  ; export backend
-  (case prop
-    (:key (format "\"id\": \"%s\"" val))
-    (:prefix (format "\"prefix\": \"%s\"" (org-element-interpret-data val)))
-    (:suffix (format "\"suffix\": \"%s\"" (org-element-interpret-data val)))
-    (:common-prefix
-     (format "\"common-prefix\": \"%s\"" (org-element-interpret-data val)))
-    (:common-suffix
-     (format "\"common-suffix\": \"%s\"" (org-element-interpret-data val)))
-    (:parenthetical (if (not val) (format "\"author-in-text\": true") nil))
-    ;; TODO: citeproc implementations use these fields, so we should extract them:
-    (:suppress-author (if val (format "\"suppress-author\": true") nil))
-    (:author-only (if val (format "\"author-only\": true") nil))
-    (:label (format "\"label\": \"%s\"" val))
-    (:locator (format "\"locator\": \"%s\"" val))
-    ; otherwise, case returns nil
-    ))
 
 (defun org-cite--run-org-citeproc (json-buffer backend cslfile bibfiles)
   "Run the org-citeproc program, passing it the following arguments:
