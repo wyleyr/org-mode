@@ -9,6 +9,7 @@
 ;;; TODO: would also be nice to have a let-plist, and let-org-element
 (require 'regexp-opt)
 (require 'format-spec)
+(require 'json)
 
 ;;; TODO: calling with args backend and info is redundant, since
 ;;; backend can be gotten from info
@@ -115,21 +116,40 @@ them from the buffer if necessary."
   "Translate a list of Org citation objects to a JSON array that can
 be read by citeproc-js"
   (if (null citations) ""
-    (format "[ %s ]" (mapconcat 'org-cite-citation-to-json citations ", "))))
+    (json-encode-array (mapcar 'org-cite--citation-to-plist citations))))
 
 (defun org-cite-citation-to-json (citation)
     "Translate an Org citation object to a JSON citation data
 object that can be read by citeproc-js"
-  (let* ((parenp (org-element-property :parenthetical citation))
-	 (refs (org-cite--get-references citation))
-         (json-refs
-	  (mapconcat 'org-cite-citation-reference-to-json refs ", "))
-	 (json-props (org-cite--citation-properties-to-json citation)))
+  (let ((plist (org-cite--citation-to-plist citation)))
+    (if plist (json-encode-plist plist)
+      "")))
+
+(defun org-cite--citation-to-plist (citation)
+    "Translate an Org citation object to a plist, in preparation
+for JSON encoding"
+  (let* ((refs (org-cite--get-references citation))
+         (refs-plists (mapcar 'org-cite--citation-reference-to-plist refs))
+	 ; json.el guesses wrong about how to encode a list of plists
+	 ; like refs-plists, so we transform it to a vector to ensure it
+	 ; is eventually encoded as an array of objects, rather than an object:
+	 (refs-vec (apply 'vector refs-plists))
+	 (prefix (org-element-property :prefix citation))
+	 (suffix (org-element-property :suffix citation))
+	 (props-plist nil))
+    ; TODO: option for "strict" citeproc-js JSON, to exclude these properties?
+    (when prefix
+      (setq props-plist
+	    (plist-put props-plist :common-prefix (org-element-interpret-data prefix))))
+    (when suffix
+      (setq props-plist
+	    (plist-put props-plist :common-suffix (org-element-interpret-data suffix))))
+    ; TODO: noteIndex property?
     (cond
-     ((and refs json-props)
-      (format "{ \"citationItems\": [ %s ], %s}" json-refs json-props))
-     (refs (format "{ \"citationItems\": [ %s ]}" json-refs))
-     (t ""))))
+     ((and refs-plists props-plist)
+      (list :citationItems refs-vec :properties props-plist))
+     (refs-plists
+      (list :citationItems refs-vec)))))
 
 (defun org-cite--citation-properties-to-json (citation)
   "Translate the common prefix and suffix of a citation to JSON
@@ -148,19 +168,54 @@ data"
     (when json-props
 	(format "\"properties\": { %s }" (mapconcat 'identity json-props ", ")))))
 	
-
 (defun org-cite-citation-reference-to-json (reference)
   "Translate a citation-reference within an Org citation object
 to JSON data that can be read by citeproc-js"
+  (let ((plist (org-cite--citation-reference-to-plist reference)))
+    (if plist (json-encode-plist plist)
+      "")))
+
+(defun org-cite--citation-reference-to-plist (reference)
+  "Translate a citation-reference within an Org citation object
+to a plist, in preparation for JSON encoding"
   (let* ((parenp (org-element-property :parenthetical
 				       (org-element-property :parent reference)))
-	 (json-props (org-cite--map-plist
-		      'org-cite--property-to-json
-		      (append (list :parenthetical parenp)
-			      (nth 1 reference))))
-	 (json-data (remove-if-not 'identity json-props)))
-    (if json-data (format "{ %s }" (mapconcat 'identity json-data ", "))
-      "")))
+	 (fields (list :prefix :suffix
+		       ; not :key, because it must be renamed :id.
+		       ; TODO: org-citeproc will interpret these if
+		       ; they are provided, but they are not currently
+		       ; parsed by Org:
+		       :suppress-author :author-only :label :locator))
+	 (plist
+	  (append (list :id (org-element-property :key reference))
+		  (if (not parenp) (list :author-in-text t))
+		  (org-cite--object-extract-plist reference fields)))
+	 ; these fields need to be further interpreted before encoding:
+	 (prefix (plist-get plist :prefix))
+	 (suffix (plist-get plist :suffix)))
+    (when prefix
+      (setq plist
+	    (plist-put plist :prefix (org-element-interpret-data prefix))))
+    (when suffix
+      (setq plist
+	    (plist-put plist :suffix (org-element-interpret-data suffix))))
+    plist))
+	 
+
+(defun org-cite--object-extract-plist (object keywords)
+  "Extract a plist from OBJECT whose keys are each of the
+KEYWORDS where OBJECT has a non-nil property value.  OBJECT
+should be an Org object, and KEYWORDS a list of keywords."
+  (flet ((extract (props accumulated)
+	    (if (null props)
+		accumulated
+	      (let* ((prop (car props))
+		     (val (org-element-property prop object))
+		     (new-acc (if val
+				  (cons prop (cons val accumulated))
+				accumulated)))
+		(extract (cdr props) new-acc)))))
+   (extract keywords '())))
 
 (defun org-cite--property-to-json (prop val)
   "Translate a property of a citation or citation-reference to JSON data"
